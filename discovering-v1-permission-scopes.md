@@ -1,6 +1,6 @@
 # Discovering permission scopes strings for Azure AD v1 applications.
 
-In this topic, we will describe the steps to discover permission scope strings of Azure AD v1.0 resources, with the purpose of integrating their APIs in an Azure AD v2.0 application. You can also reference many [popular Azure AD v1.0 resource](popular-v1-permissions.md).
+In this topic, we will describe the steps to discover permission scope strings of Azure AD v1.0 resources, with the purpose of integrating their APIs into an Azure AD v2.0 application. You can also reference many [popular Azure AD v1.0 resources](popular-v1-permissions.md).
 
 >  Note: the steps outlined in this topic are a temporary solution for locating scope strings. The developer experience between the Azure AD v1.0 and v2.0 endpoints will improve dramatically over time and not longer require hunting for scope strings.
 
@@ -17,32 +17,28 @@ Start by creating a v1.0 application through the Azure Portal with the desired A
 
 ### Create an Azure AD v1.0 application
 
-In the Azure Portal, create an Azure AD v1.0 application. To make a new v1.0 application, go to Azure Active Directory -> App Registrations -> New Application Registration. This is just a dummy application so don't worry about using a proper name or url.
+In the Azure Portal, create an Azure AD v1.0 application. To make a new v1.0 application, select Azure Active Directory -> App Registrations -> New Application Registration. The details of this app registration are not important as it will only be used for extracting scope information from it's manifest. The application can be deleted after completing all of step 2.
 
 ### Remove the default scopes
 
-Your goal is to isolate the scopes you want to use in your application. So start off with removing whatever scopes this new v1.0 application came with.
-
-The v1.0 scopes are stored in the v1.0 application's manifest file. In the application, choose Manifest, which is next to Settings and a json file will get pulled up. In that file is a section called `requiredResourceAccess` which is a list of objects. This contains all permission scopes included in that application, organized by which application those scopes pertain to (PowerBI, Flow, etc) since each application has its own scopes. Remove all items in this list if there are any, so you will know which are the scopes you are adding yourself in the next step. This way, you make sure not to overflow your app permissions with scopes you don't even intent to use.
+New Azure AD v1.0 application registrations are provisioned with one default permission, the "Sign in and read user profile" delegated permission for the "Windows Azure Active Directory" API. You should remove this permission to help isolate the permission scopes you are trying to discover. You can remove is by selecting Settings -> Required Permissions, then selecting and deleting "Windows Azure Active Directory".
 
 ### Add the permission scope(s) you want to use
 
-Back in the application, choose Settings -> Required Permissions. This is where you are specifying the kinds of permissions this simulation v1.0 application will accept. To cover whatever application you're trying to actually use, choose Add, and then select the service you're trying to hit and choose the permission scope you will want to use. For example, if you choose the PowerBI API, you can choose the `View All Groups` permissions scope. When you choose "Done," the scopes you chose will be added in the manifest file you saw earlier.
+In the Required Permissions section of the application, select Add and use the "Select an API" and "Select permissions" interfaces to add the desired permissions. For example, if you search for and select the `PowerBI API Service (Microsoft.Azure.AnalysisServices)` API, you can choose the `View all Datasets` delegated permission scope.
 
-## 2. Copy the permissions from the v1.0 application to your v2.0 application
+## 2. Copy the permissions from the v1.0 application to a v2.0 application
+
+In this step, you will copy the permissions configured in the Azure AD v1.0 application and configure them in the Azure AD v2.0 application by editting the application manifests.
 
 ### Find the scope from the v1.0 application's manifest
 
-Now go back to the manifest file to see the new scopes you just added. The `resourceAppId` is the application id for the service you are trying to hit (like PowerBI), and the `resourceAccess` holds the scopes included from that service (like `View All Groups`). Each object in this list has an `id` and a `type`, where the id is the scope's AAD object id <!-- confirm this -->and the `type` is `Scope.` If you added multiple scopes and/or multiple different APIs in the last step, make sure to understand this structure so you add the scopes properly in the next step.
-
-If this is the first scope you're adding to your application manifest file, grab the entire `requiredResourceAccess` section. If it's the first scope you're adding from a new service you haven't accessed before, grab the whole object in that section including the `resourceAppId` and the `resourceAccess` sections. If you're adding a new scope but have already used this service in your application, identify which object in the `resourceAccess` list is new and only grab that.
-
-Below is what the scope looks like for PowerBI's Read All Groups
+From the Azure AD v1.0 application registration in Azure portal, select the Manifest button to display the json manifest for the application. Locate and copy the entire `requiredResourceAccess` section in the manifest. The example below shows what this section looks like for an app configured with the `View all Datasets` permission of the `PowerBI API Service (Microsoft.Azure.AnalysisServices)` resource. It is possible for this section to contain multiple resources and/or scopes.
 
 ```
 "requiredResourceAccess": [
     {
-        "resourceAppId": "00000009-0000-0000-c000-000000000000",
+        "resourceAppId": "7f33e027-4039-419b-938e-2f8ca153e68e",
         "resourceAccess": [
             {
                 "id": "47df08d3-85e6-4bd3-8c77-680fbe28162e",
@@ -55,36 +51,36 @@ Below is what the scope looks like for PowerBI's Read All Groups
 
 ### Add the scope to your v2.0 application's manifest
 
-Now that you grabbed the v1.0 scope manifest section, you have to add it to your actual Azure AD v2.0 application's manifest file. Go to wherever you registered your Azure AD v2.0 application and edit its manifest file. Paste in the subsection you determined from the previous step, based on what already exists in your application. For example, don't paste in the entire `requiredResourceAccess` section if you have already have it.
+Navigate to the application settings page of the Azure AD v2.0 application. If you haven't yet registered an Azure AD v2.0 application, follow the steps in [register your app with the Azure AD v2.0 endpoint](https://developer.microsoft.com/en-us/graph/docs/concepts/auth_register_app_v2). Locate and select the `Edit Application Manifest` button at the bottom of the page to display the manifest. Locate the `requiredResourceAccess` section of the manifest and replace it with the `requiredResourceAccess` section you copied from the Azure AD v1.0 application registration. Remember to save the changes to the manifest.
 
-## 3. Perform a code authorization flow with your v2.0 application using the resource default scope
+## 3. Perform a code authorization flow using the resource default scope
 
-Now when building your HTTP request to hit this service's endpoint from your Azure AD v2.0 application, the scope you just preconfigured in your v2.0 application will be accessible under the resource default scope.
+In this step, you will perform a manual code authorization flow against the Azure AD v2.0 endpoint using the Azure AD v1.0 resource default permission scope. This will help reveal the friendly scope strings for the Azure AD v1.0 resource when an access token is acquired.
 
 ### Authorization Request
 
-This is similar to the main instructions, but you will not specify a scope and will instead use the predetermined scopes, accessed through the `/.default` scope of each of the services.
-
->In these examples, we use a dummy client id (6731de76-14a6-49ae-97bc-6eba6914391e) that you can use for testing as well if you'd like.
+When performing the authorization request, use the resource default scope of `{app_uri}/.default`. The example below uses the `PowerBI API Service (Microsoft.Azure.AnalysisServices)` resource with the default scope of `https://analysis.windows.net/powerbi/api/.default`.
 
 ```
 // Line breaks for legibility only
+// Note the use of the "organizations" tenant
 
-https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize
+https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize
 ?client_id=6731de76-14a6-49ae-97bc-6eba6914391e
 &response_type=code
-&redirect_uri=http%3A%2F%2Flocalhost%2Fmyapp%2F
+&redirect_uri=http://localhost/myapp/
 &response_mode=query
-&scope=https%3A%2F%2Fanalysis.windows.net%2Fpowerbi%2Fapi%2F.default
+&scope=https://analysis.windows.net/powerbi/api/.default
 &state=12345
 ```
+
 | Parameter |  | Description |
 | --- | --- | --- |
-| tenant |required |The `{tenant}` value in the path of the request can be used to control who can sign into the application.  The allowed values are `common` for both Microsoft accounts and work or school accounts, `organizations` for work or school accounts only, `consumers` for Microsoft accounts only, and tenant identifiers such as the tenant ID or domain name.  For more detail, see [protocol basics](https://docs.microsoft.com/azure/active-directory/develop/active-directory-v2-protocols#endpoints). |
+| tenant |required |The `{tenant}` value in the path of the request can be used to control who can sign into the application.  For Azure AD v1.0 resources, the allowed values are `organizations` and tenant identifiers such as the tenant ID or domain name.  For more detail, see [protocol basics](https://docs.microsoft.com/azure/active-directory/develop/active-directory-v2-protocols#endpoints). |
 | client_id |required |The Application ID that the registration portal ([apps.dev.microsoft.com](https://apps.dev.microsoft.com/?referrer=https://azure.microsoft.com/documentation/articles&deeplink=/appList)) assigned your app. |
 | response_type |required |Must include `code` for the authorization code flow. |
 | redirect_uri |recommended |The redirect_uri of your app, where authentication responses can be sent and received by your app.  It must exactly match one of the redirect_uris you registered in the app registration portal, except it must be URL encoded.  For native and mobile apps, you should use the default value of `https://login.microsoftonline.com/common/oauth2/nativeclient`. |
-| scope |required |A space-separated list of the Microsoft Graph permissions that you want the user to consent to. This may also include OpenID scopes. |
+| scope |required |A space-separated list of permissions that you want the user to consent to. This can be well-known scopes such as those used by the Microsoft Graph (ex: Files.Read), a combination of app URI and scope string (ex: `https://analysis.windows.net/powerbi/api/Dataset.Read.All`), or the resource default if permissions are pre-configured for the app (ex: `https://analysis.windows.net/powerbi/api/.default`). This may also include OpenID scopes. |
 | response_mode |recommended |Specifies the method that should be used to send the resulting token back to your app.  Can be `query` or `form_post`. |
 | state |recommended |A value included in the request that will also be returned in the token response.  It can be a string of any content that you wish.  A randomly generated unique value is typically used for [preventing cross-site request forgery attacks](http://tools.ietf.org/html/rfc6749#section-10.12).  The state is also used to encode information about the user's state in the app before the authentication request occurred, such as the page or view they were on. |
 
@@ -92,31 +88,20 @@ https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize
 
 ### Authorization Response
 
-The response from this GET request will be a query string with a `code` parameter which you will extract to use in the next step.
+If the user consents to the permissions your app requested, the response will contain the authorization code in the `code` parameter. Here is an example of a successful response to the request above. Because the `response_mode` parameter in the request was set to `query`, the response is returned in the query string of the redirect URL.
 
 ```
-// Line breaks for legibility only
-
-http://localhost/myapp/
-?code={...}
+GET http://localhost/myapp/?
+code=M0ab92efe-b6fd-df08-87dc-2c6500a7f84d
 &state=12345
-&session_state={...}
 ```
-
-## 4. Get scope names from the token response
-
-Now that you have authenticated with a code flow, you can use your code from the last step's response to get an access token response.
 
 ### Token Request
 
-Use the below HTTP/1.1 POST request to request an access token. Again, this sample shows our dummy client id and its matching client secret.
+Use the authorization `code` received in the previous step to request an access token by sending a `POST` request to the `/token` endpoint. Similar to the first step, you should use the resource default scope of `{app_uri}/.default`. The example below uses the `PowerBI API Service (Microsoft.Azure.AnalysisServices)` resource with the default scope of `https://analysis.windows.net/powerbi/api/.default`.
 
-<!-- The rest of the docs use this format for the first line: "POST /organizations/oauth2/v2.0/token HTTP/1.1"
-
-AND for the second line they add https:// to the beginning, which breaks when I run it in Postman
-
-AND for the URIs they use encoded, which break the calls when I run them in postman. -->
 ```
+// Note the use of the "organizations" tenant
 POST https://login.microsoftonline.com/organizations/oauth2/v2.0/token
 Host: login.microsoftonline.com
 Content-Type: application/x-www-form-urlencoded
@@ -128,19 +113,20 @@ client_id=6731de76-14a6-49ae-97bc-6eba6914391e
 &grant_type=authorization_code
 &client_secret=JqQX2PNo9bpM0uEihUPzyrh    // NOTE: Only required for web apps
 ```
+
 | Parameter |  | Description |
 | --- | --- | --- |
-| tenant |required |The `{tenant}` value in the path of the request can be used to control who can sign into the application.  The allowed values are `common` for both Microsoft accounts and work or school accounts, `organizations` for work or school accounts only, `consumers` for Microsoft accounts only, and tenant identifiers such as the tenant ID or domain name.  For more detail, see [protocol basics](https://docs.microsoft.com/azure/active-directory/develop/active-directory-v2-protocols#endpoints). |
+| tenant |required |The `{tenant}` value in the path of the request can be used to control who can sign into the application.  For Azure AD v1.0 resources, the allowed values are `organizations` and tenant identifiers such as the tenant ID or domain name.  For more detail, see [protocol basics](https://docs.microsoft.com/azure/active-directory/develop/active-directory-v2-protocols#endpoints). |
 | client_id |required |The Application ID that the registration portal ([apps.dev.microsoft.com](https://apps.dev.microsoft.com/?referrer=https://azure.microsoft.com/documentation/articles&deeplink=/appList)) assigned your app. |
 | grant_type |required |Must be `authorization_code` for the authorization code flow. |
-| scope |required |A space-separated list of scopes.  The scopes requested in this leg must be equivalent to or a subset of the scopes requested in the first (authorization) leg.  If the scopes specified in this request span multiple resource servers, then the v2.0 endpoint will return a token for the resource specified in the first scope. |
+| scope |required |A space-separated list of permissions that you want the user to consent to. This can be well-known scopes such as those used by the Microsoft Graph (ex: Files.Read), a combination of app URI and scope string (ex: `https://analysis.windows.net/powerbi/api/Dataset.Read.All`), or the resource default if permissions are pre-configured for the app (ex: `https://analysis.windows.net/powerbi/api/.default`). This may also include OpenID scopes. |
 | code |required |The authorization_code that you acquired in the first leg of the flow. |
 | redirect_uri |required |The same redirect_uri value that was used to acquire the authorization_code. |
 | client_secret |required for web apps |The application secret that you created in the app registration portal for your app.  It should not be used in a native app, because client_secrets cannot be reliably stored on devices.  It is required for web apps and web APIs, which have the ability to store the client_secret securely on the server side. |
 
-### Token Response
+## 4. Get scope names from the token response
 
-Unlike usual, you don't actually care about the access token right now. You just need to look at the `scopes` parameter from the response. Now you have the names of all the v1.0 scopes you wanted, so you can use those on your v2.0 application. In this sample response, the scope we wanted was Dataset.Read.All within the PowerBI API.
+The access token response from the code authorization flow contains a list of the permissions that the access token is good for in the `scope` parameter. These include the individual permission scope strings that can be used incrementally/dynamically with the Azure AD v2.0 endpoint. In the example response, the response includes the `View all Datasets` permission of the `PowerBI API Service (Microsoft.Azure.AnalysisServices)` resource or `https://analysis.windows.net/powerbi/api/Dataset.Read.All`.
 
 ```
 {

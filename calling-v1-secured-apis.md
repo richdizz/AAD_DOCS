@@ -14,14 +14,15 @@ AADSTS90124: Resource 'https://analysis.windows.net/powerbi/api' (Microsoft.Azur
 As the error suggests, the Azure AD v2.0 endpoint should use `organizations` or tenant-specific endpoints (ex: `8eaef023-2b34-4da1-9baa-8bc8c9d6a490` or `contoso.onmicrosoft.com`) to get tokens for an Azure AD v1.0 resource. 
 
 ## Permission Scopes
-Outside of well known permission scopes used by the Microsoft Graph (ex: `Files.Read`), the Azure AD v2.0 permission scope syntax uses the pattern `{app_uri}/{scope_string}`. For example, the Power BI permission scope for viewing all datasets would be `https://analysis.windows.net/powerbi/api/Dataset.Read.All`, which is comprised of the Power BI app URI `https://analysis.windows.net/powerbi/api/` and the permission scope string `Dataset.Read.All`.
+Outside of well known permission scopes used by the Microsoft Graph (ex: `Files.Read`), the Azure AD v2.0 permission scope syntax uses the pattern `{app_uri}/{scope_string}`. For example, the `PowerBI API Service (Microsoft.Azure.AnalysisServices)` permission scope for `View all Datasets` would be `https://analysis.windows.net/powerbi/api/Dataset.Read.All`, which is comprised of the Power BI app URI `https://analysis.windows.net/powerbi/api/` and the permission scope string `Dataset.Read.All`.
 
-> As Azure AD works to converge the developer experience between the Azure AD v1.0 and v2.0 endpoints, you might find it difficult to figure out the app URI and scope strings of applications. This is partially because scopes are not used in Azure AD v1.0 OAuth flows and thus not as commonly used until now. Here is a guide for figuring out permission scopes and here is a link to some popular permission scopes.
+> As Azure AD works to converge the developer experience between the Azure AD v1.0 and v2.0 endpoints, you might find it difficult to figure out the app URI and scope strings of applications. This is partially because scopes are not used in Azure AD v1.0 OAuth flows and thus not as commonly used until now. We have [documented a number popular resource scopes](popular-v1-permissions.md) and [instructions for discovering any v1 permission scope string](discovering-v1-permission-scopes.md).
 
 ## Walkthrough
 Below are the steps you need to take to bring your Azure AD v2.0 endpoint to communication with a service designed only for commercial accounts.
 
 The basic steps required to use the OAuth 2.0 authorization code grant flow to get an access token from a service registered as an Azure AD v1.0 application are:
+
 1. Get authorization
 2. Get a token
 3. Use the refresh token to get a new access token
@@ -34,10 +35,9 @@ The following shows an example request to the `/authorize` v2.0 endpoint for an 
 
 With the Azure AD v2.0 endpoint, permissions are requested using the `scope` parameter. In this example, the Power BI permissions requested are _Dataset.Read.All_ (View all Datasets), which will allow the app to read all Power BI datasets for the signed-in user. The _offline\_access_ permission is requested so that the app can get a refresh token, which it can use to get a new access token when the current one expires.
 
-For Azure AD v1.0 resources, scopes are a combination of the app URI and the scope string. For Power BI, this is https://analysis.windows.net/powerbi/api/.default. Other popular resource default scopes can be seen above. <!-- where? -->
-
 ```
 // Line breaks for legibility only
+// {tenant} should be "organizations" or tenant-specific for v1.0 resource
 
 https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?
 client_id=6731de76-14a6-49ae-97bc-6eba6914391e
@@ -88,6 +88,7 @@ Your app uses the authorization `code` received in the previous step to request 
 ### Token request
 ```
 // Line breaks for legibility only
+// {tenant} should be "organizations" or tenant-specific for v1.0 resource
 
 POST /{tenant}/oauth2/v2.0/token HTTP/1.1
 Host: https://login.microsoftonline.com
@@ -113,7 +114,6 @@ client_id=6731de76-14a6-49ae-97bc-6eba6914391e
 
 ### Token response
 Although the access token is opaque to your app, the response contains a list of the permissions that the access token is good for in the `scope` parameter. 
-<!-- TODO: is this true for v1 endpoints? i want to say yes, but verify -->
 
 ```
 {
@@ -124,6 +124,7 @@ Although the access token is opaque to your app, the response contains a list of
     "refresh_token": "AwABAAAAvPM1KaPlrEqdFSBzjqfTGAMxZGUTdM0t4B4..."
 }
 ```
+
 | Parameter | Description |
 | --- | --- |
 | token_type |Indicates the token type value. The only type that Azure AD supports is Bearer |
@@ -137,9 +138,9 @@ Although the access token is opaque to your app, the response contains a list of
 Access tokens are short lived, and you must refresh them after they expire to continue accessing resources.  You can do so by submitting another `POST` request to the `/token` endpoint, this time providing the `refresh_token` instead of the `code`.
 
 ### Request
-<!-- replaced tenand wth organizations again -->
 ```
 // Line breaks for legibility only
+// {tenant} should be "organizations" or tenant-specific for v1.0 resource
 
 POST /{tenant}/oauth2/v2.0/token HTTP/1.1
 Host: https://login.microsoftonline.com
